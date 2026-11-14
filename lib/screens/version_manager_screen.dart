@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart'; // Для использования Provider
-import 'package:file_picker/file_picker.dart'; // Для выбора папок
-import 'package:path_provider/path_provider.dart'; // Для системных путей
-import 'dart:io'; // Для работы с файлами
+import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'dart:async'; // Для Timer
 
-// Модели и сервисы (предполагаем, что они будут созданы)
 import '../models/minecraft_version.dart';
 import '../services/minecraft_service.dart';
-// import '../services/settings_service.dart'; // Если нужен будет доступ к настройкам
 
 class VersionManagerScreen extends StatefulWidget {
   @override
@@ -16,73 +15,45 @@ class VersionManagerScreen extends StatefulWidget {
 }
 
 class _VersionManagerScreenState extends State<VersionManagerScreen> {
-  // Список версий, которые мы загрузим из сервиса
+  late MinecraftService _minecraftService; // Получим сервис через Provider
   List<MinecraftVersion> _versions = [];
-  MinecraftVersion? _activeVersion; // Активно выбранная версия
+  MinecraftVersion? _activeVersion;
   bool _isLoading = true;
   String _errorMessage = '';
 
   @override
   void initState() {
     super.initState();
-    _loadVersions();
+    // Инициализируем сервис здесь, но будем использовать его после того, как он будет доступен через Provider
+    // _loadVersions(); // Перенесем в didChangeDependencies
   }
 
-  // Загрузка списка версий
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _minecraftService = Provider.of<MinecraftService>(context, listen: false);
+    _loadVersions(); // Загружаем версии при первом изменении зависимостей
+  }
+
   Future<void> _loadVersions() async {
     setState(() {
       _isLoading = true;
       _errorMessage = '';
     });
     try {
-      // Здесь будет логика загрузки версий.
-      // Пока что используем заглушку. Позже будем использовать MinecraftService.
-      // Предполагаем, что MinecraftService будет возвращать список версий.
-      // _versions = await Provider.of<MinecraftService>(context, listen: false).getVersions();
-
-      // Заглушка для примера
-      await Future.delayed(Duration(seconds: 1)); // Имитация загрузки
-      _versions = [
-        MinecraftVersion(
-          id: '1.20.1',
-          type: 'release',
-          folderPath: '/path/to/minecraft/1.20.1', // Пример пути
-          jvmArgs: '-Xmx2G -Xms1G',
-          isLocal: true, // Эта версия установлена локально
-        ),
-        MinecraftVersion(
-          id: '1.12.2',
-          type: 'release',
-          folderPath: '/path/to/minecraft/1.12.2',
-          jvmArgs: '-Xmx4G -Xms2G',
-          isLocal: true,
-        ),
-        MinecraftVersion(
-          id: '1.7.10',
-          type: 'release',
-          folderPath: '/path/to/minecraft/1.7.10',
-          jvmArgs: '-Xmx4G -Xms2G',
-          isLocal: true,
-        ),
-      ];
-
-      // Установка активной версии (например, первая из списка)
-      if (_versions.isNotEmpty) {
-        _activeVersion = _versions.first;
-      }
-
+      _versions = await _minecraftService.getVersions();
+      _activeVersion = await _minecraftService.getActiveVersion();
       setState(() {
         _isLoading = false;
       });
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Не удалось загрузить версии: ${e.toString()}';
+        _errorMessage = 'Ошибка загрузки версий: ${e.toString()}';
       });
     }
   }
 
-  // Функция выбора папки для новой версии
   Future<void> _addLocalVersion() async {
     String? selectedDirectory = await FilePicker.platform.getDirectoryPath(
       dialogTitle: "Выберите папку с версией Minecraft",
@@ -90,53 +61,137 @@ class _VersionManagerScreenState extends State<VersionManagerScreen> {
     );
 
     if (selectedDirectory != null) {
-      // Здесь будет логика добавления новой локальной версии.
-      // Нужно будет определить ID версии по файлам (например, client.jar, version.json)
-      // Пока что просто добавим заглушку в список
-      setState(() {
-        _versions.add(MinecraftVersion(
-          id: 'Custom ${DateTime.now().millisecondsSinceEpoch}',
-          type: 'custom',
-          folderPath: selectedDirectory,
-          jvmArgs: '-Xmx2G -Xms1G', // Аргументы по умолчанию
-          isLocal: true,
-        ));
-      });
+      try {
+        // TODO: Реальная логика парсинга ID версии из папки
+        // Пока что используем временный ID, но в будущем надо парсить version.json
+        final versionId = await _detectVersionId(selectedDirectory); // Пытаемся определить ID
+
+        await _minecraftService.addLocalVersion(selectedDirectory, versionId);
+        await _loadVersions(); // Перезагружаем список версий
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Версия "$versionId" добавлена.')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка добавления версии: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  // Примерная функция для определения ID версии из папки
+  Future<String> _detectVersionId(String folderPath) async {
+    final versionJsonFile = File('$folderPath/version.json');
+    if (await versionJsonFile.exists()) {
+      try {
+        final jsonContent = await versionJsonFile.readAsString();
+        final Map<String, dynamic> jsonData = jsonDecode(jsonContent);
+        return jsonData['id'] ?? 'Unknown';
+      } catch (e) {
+        print("Error parsing version.json: $e");
+        return 'Unknown (Error parsing)';
+      }
+    } else {
+      // Если version.json нет, пробуем найти client.jar и извлечь ID из имени папки
+      final clientJarFile = File('$folderPath/client.jar');
+      if (await clientJarFile.exists()) {
+        final folderName = folderPath.split('/').last;
+        return folderName; // Используем имя папки как ID
+      }
+      return 'Unknown (No version.json/client.jar)';
+    }
+  }
+
+  Future<void> _setActiveVersion(MinecraftVersion version) async {
+    try {
+      await _minecraftService.setActiveVersion(version);
+      _activeVersion = version; // Обновляем состояние локально
+      setState(() {}); // Обновляем UI
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Версия добавлена. Пожалуйста, настройте ее.')),
+        SnackBar(content: Text('Активная версия: ${version.id}')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка установки версии: ${e.toString()}')),
       );
     }
   }
 
-  // Функция для выбора активной версии
-  void _setActiveVersion(MinecraftVersion version) {
-    setState(() {
-      _activeVersion = version;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Активная версия: ${version.id}')),
+  Future<void> _removeVersion(MinecraftVersion version) async {
+    if (!version.isLocal) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Можно удалять только локальные версии.')),
+      );
+      return;
+    }
+
+    final bool? confirmDelete = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Подтвердите удаление'),
+          content: Text('Вы уверены, что хотите удалить локальную версию "${version.id}"? Это действие нельзя будет отменить.'),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Отмена'),
+              onPressed: () {
+                Navigator.of(context).pop(false);
+              },
+            ),
+            TextButton(
+              child: Text('Удалить', style: TextStyle(color: Colors.redAccent)),
+              onPressed: () {
+                Navigator.of(context).pop(true);
+              },
+            ),
+          ],
+        );
+      },
     );
-    // Здесь можно сохранить активную версию в shared_preferences
+
+    if (confirmDelete == true) {
+      try {
+        await _minecraftService.removeLocalVersion(version);
+        await _loadVersions(); // Перезагружаем список
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Версия "${version.id}" удалена.')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка удаления версии: ${e.toString()}')),
+        );
+      }
+    }
   }
+
+  // TODO: Реализация запуска игры
+  Future<void> _launchGame() async {
+    if (_activeVersion == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Выберите активную версию игры.')),
+      );
+      return;
+    }
+
+    // Здесь будет сложная логика:
+    // 1. Проверить наличие необходимых файлов (client.jar, version.json, libraries).
+    // 2. Парсить version.json для получения JVM аргументов, путей к библиотекам.
+    // 3. Получить никнейм пользователя (нужно добавить поле ввода в UI).
+    // 4. Сконструировать команду для запуска JVM (например, с помощью `Process.start` или `url_launcher` для перехода в другое приложение, если лаунчер не может сам запускать JVM).
+    // 5. Реализовать офлайн-режим (online-mode=false).
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Запуск игры "${_activeVersion!.id}"... (функция в разработке)')),
+    );
+    // Пока что ничего не делаем
+  }
+
 
   @override
   Widget build(BuildContext context) {
+    // Убираем AppBar, т.к. он есть в HomeScreen
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Управление Версиями'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.add),
-            onPressed: _addLocalVersion, // Кнопка добавления локальной версии
-            tooltip: 'Добавить локальную версию',
-          ),
-          IconButton(
-            icon: Icon(Icons.refresh),
-            onPressed: _loadVersions, // Кнопка обновления списка
-            tooltip: 'Обновить список',
-          ),
-        ],
-      ),
+      // appBar: AppBar( ... ), // AppBar будет в HomeScreen
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
           : _errorMessage.isNotEmpty
@@ -153,19 +208,23 @@ class _VersionManagerScreenState extends State<VersionManagerScreen> {
                             style: GoogleFonts.russoOne(fontSize: 18, color: Colors.white70),
                           ),
                           SizedBox(height: 8),
-                          // Карточка активной версии
                           if (_activeVersion != null)
                             _buildVersionCard(_activeVersion!, true)
                           else
-                            Text('Версия не выбрана', style: GoogleFonts.russoOne(fontSize: 16, color: Colors.white54)),
+                            Card(
+                              color: Theme.of(context).colorScheme.surface,
+                              elevation: 2,
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Text('Версия не выбрана', style: GoogleFonts.russoOne(fontSize: 16, color: Colors.white54)),
+                              ),
+                            ),
+                          SizedBox(height: 16),
+                          // TODO: Добавить поле для ввода никнейма
+                          // TextField(...)
                           SizedBox(height: 16),
                           ElevatedButton(
-                            onPressed: () {
-                              // TODO: Реализовать запуск игры
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Запуск игры... (функция в разработке)')),
-                              );
-                            },
+                            onPressed: _activeVersion == null ? null : _launchGame, // Кнопка активна, если выбрана версия
                             child: Text('ИГРАТЬ'),
                           ),
                         ],
@@ -173,57 +232,62 @@ class _VersionManagerScreenState extends State<VersionManagerScreen> {
                     ),
                     Divider(color: Theme.of(context).colorScheme.surface, height: 1),
                     Expanded(
-                      child: ListView.builder(
-                        itemCount: _versions.length,
-                        itemBuilder: (context, index) {
-                          final version = _versions[index];
-                          // Не показываем активную версию в списке, если она уже выбрана
-                          if (version.id == _activeVersion?.id && version.isLocal == _activeVersion?.isLocal) {
-                            return SizedBox.shrink();
-                          }
-                          return _buildVersionCard(version, false);
-                        },
-                      ),
+                      child: _versions.isEmpty && !_isLoading
+                          ? Center(child: Text('Версии не найдены. Добавьте новую.'))
+                          : ListView.builder(
+                              itemCount: _versions.length,
+                              itemBuilder: (context, index) {
+                                final version = _versions[index];
+                                // Не показываем активную версию в списке, если она уже выбрана
+                                if (_activeVersion != null && _activeVersion == version) {
+                                  return SizedBox.shrink();
+                                }
+                                return _buildVersionCard(version, false);
+                              },
+                            ),
                     ),
                   ],
                 ),
     );
   }
 
-  // Виджет для отображения карточки версии
   Widget _buildVersionCard(MinecraftVersion version, bool isActive) {
     return Card(
       margin: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
       color: isActive
-          ? Theme.of(context).colorScheme.secondary.withOpacity(0.2) // Подсветка активной версии
-          : Theme.of(context).colorScheme.surface, // Цвет обычной карточки
+          ? Theme.of(context).colorScheme.secondary.withOpacity(0.2)
+          : Theme.of(context).colorScheme.surface,
       elevation: isActive ? 6.0 : 2.0,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  version.id,
-                  style: GoogleFonts.russoOne(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Тип: ${version.type}',
-                  style: GoogleFonts.russoOne(fontSize: 14, color: Colors.white54),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Путь: ${version.folderPath}',
-                  style: GoogleFonts.russoOne(fontSize: 12, color: Colors.white38),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+            Expanded( // Оборачиваем в Expanded, чтобы текст не выходил за пределы
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    version.id,
+                    style: GoogleFonts.russoOne(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Тип: ${version.type}',
+                    style: GoogleFonts.russoOne(fontSize: 14, color: Colors.white54),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Путь: ${version.folderPath}',
+                    style: GoogleFonts.russoOne(fontSize: 12, color: Colors.white38),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
             Row(
+              mainAxisSize: MainAxisSize.min, // Занимаем минимальное место
               children: [
                 if (!isActive)
                   IconButton(
@@ -231,21 +295,10 @@ class _VersionManagerScreenState extends State<VersionManagerScreen> {
                     onPressed: () => _setActiveVersion(version),
                     tooltip: 'Сделать активной',
                   ),
-                if (version.type == 'custom' || version.type == 'local') // Можно добавить кнопку удаления для локальных версий
+                if (version.isLocal)
                   IconButton(
                     icon: Icon(Icons.delete_outline, color: Colors.redAccent),
-                    onPressed: () {
-                      // TODO: Добавить удаление локальной версии
-                      setState(() {
-                        _versions.remove(version);
-                        if (_activeVersion == version) {
-                          _activeVersion = null; // Сбрасываем активную, если удалили ее
-                        }
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Версия удалена')),
-                      );
-                    },
+                    onPressed: () => _removeVersion(version),
                     tooltip: 'Удалить версию',
                   ),
               ],
