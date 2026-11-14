@@ -1,0 +1,53 @@
+name: leti_launcher
+description: A new Flutter project for Minecraft Java.
+publish_to: 'none' # Уберите, если планируете публиковать в pub.dev
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0" # Убедитесь, что ваш SDK Flutter соответствует
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI пакеты
+  cupertino_icons: ^1.0.2 # Для iOS-подобных иконок
+  google_fonts: ^6.0.0  # Для удобной работы со шрифтами
+
+  # Сеть и API
+  http: ^1.1.0 # Для выполнения HTTP-запросов (например, к CurseForge API)
+  dio: ^5.3.3  # Более мощный HTTP-клиент, полезен для загрузки файлов
+
+  # Работа с файлами и системой
+  path_provider: ^2.1.1 # Для получения путей к папкам на устройстве
+  file_picker: ^6.1.1 # Для выбора файлов и папок пользователем
+  shared_preferences: ^2.2.2 # Для хранения простых данных (например, настройки, последнее выбранное имя)
+
+  # UI компоненты
+  flutter_svg: ^1.1.6 # Для работы с SVG-иконками
+
+  # Другие полезные пакеты
+  provider: ^6.1.1 # Для управления состоянием (State Management) - необязательно, но полезно
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^2.0.0 # Инструмент для анализа кода
+
+flutter:
+  uses-material-design: true
+
+  # Определение шрифтов
+  fonts:
+    - family: Minecraft
+      fonts:
+        - asset: assets/fonts/Minecraft.ttf
+        - asset: assets/fonts/Minecraft_Bold.ttf
+          weight: 700
+
+  # Определение SVG иконок (если нужно)
+  # assets:
+  #   - assets/images/
+  #   - assets/icons/
