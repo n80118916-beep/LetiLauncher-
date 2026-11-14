@@ -1,71 +1,93 @@
+# Имя рабочего процесса, отображаемое на вкладке Actions
 name: Flutter Build APK
 
+# Триггеры, когда запускается этот workflow
 on:
   push:
     branches:
-      - main  # Собирать при пуше в main ветку
-      - develop # Или в develop ветку
+      - main       # Запускается при пуше в главную ветку
+      - develop    # Запускается при пуше в ветку develop
     tags:
-      - 'v*.*.*' # Собирать при создании тега, начинающегося с 'v' (например, v1.0.0)
+      - 'v*.*.*'   # Запускается при создании тега, начинающегося с 'v' (например, v1.0.0)
 
   pull_request:
     branches:
-      - main
-      - develop # Также можно собирать при создании PR
+      - main       # Запускается при создании/обновлении PR в main
+      - develop    # Запускается при создании/обновлении PR в develop
 
+# Задачи, которые будут выполняться
 jobs:
   build_apk:
-    name: Build APK
+    name: Build Android APK # Имя задачи
     runs-on: ubuntu-latest # Используем самый свежий образ Ubuntu
 
     steps:
+      # 1. Получение кода из репозитория
       - name: Checkout code
-        uses: actions/checkout@v4 # Получаем код из репозитория
+        uses: actions/checkout@v4 # Обновленная версия checkout action
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2 # Действие для установки Flutter
+      # 2. Настройка Flutter SDK
+      - name: Set up Flutter SDK
+        uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.16.0' # Укажите вашу версию Flutter (или 'stable', 'beta', 'dev')
-          channel: 'stable'         # Канал Flutter
+          channel: 'stable'         # Используем стабильный канал Flutter
 
+      # 3. Получение зависимостей проекта
       - name: Get dependencies
-        run: flutter pub get # Устанавливаем зависимости проекта
+        run: flutter pub get
 
-      - name: Build APK
-        run: flutter build apk --release # Собираем APK в релизной конфигурации
-        env:
-          # Если нужны какие-то переменные окружения для сборки (например, для ключ
-          # подписи), их можно определить здесь или в Secrets репозитория.
-          # Пример:
-          # ANDROID_SIGNING_KEY: ${{ secrets.ANDROID_SIGNING_KEY }}
-          # ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          # ANDROID_KEY_STORE_PASSWORD: ${{ secrets.ANDROID_KEY_STORE_PASSWORD }}
-          # ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          FLUTTER_TARGET: lib/main.dart # Точка входа в приложение
+      # 4. Сборка APK в релизной конфигурации
+      #    --release: Для оптимизированной сборки
+      #    --target: Указывает точку входа, если она отличается от lib/main.dart
+      - name: Build Release APK
+        run: flutter build apk --release --target=lib/main.dart
+        # Если вы хотите указать конкретную версию Android SDK для сборки,
+        # можно добавить переменную окружения, например:
+        # env:
+        #   ANDROID_SDK_ROOT: /usr/local/android-sdk
 
+      # 5. Загрузка собранного APK как артефакт
+      #    Артефакты можно будет скачать со страницы завершенного запуска Actions.
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v4 # Действие для загрузки собранного файла
+        uses: actions/upload-artifact@v4 # Обновленная версия upload-artifact action
         with:
-          name: app-release.apk # Имя артефакта
-          path: build/app/outputs/flutter-apk/app-release.apk # Путь к собранному APK
+          name: app-release.apk # Имя артефакта (будет видно при скачивании)
+          path: build/app/outputs/flutter-apk/app-release.apk # Путь к собранному APK файлу
 
-      # --- Опционально: Если нужно собирать и подписывать APK ---
-      # Этот блок требует настройки секретов репозитория для ключа подписи.
-      # - name: Sign APK (Example - requires secrets configuration)
-      #   if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' # Только для определенных веток
+      # --- Опционально: Сборка и подпись APK (требует настройки Secrets) ---
+      # Если вы хотите собирать подписанный APK, раскомментируйте этот блок
+      # и настройте GitHub Secrets для ключа подписи.
+      #
+      # - name: Setup Java for Signing
+      #   uses: actions/setup-java@v3
+      #   with:
+      #     distribution: 'temurin' # Можно использовать 'zulu' или 'adopt'
+      #     java-version: '17' # Укажите версию Java, совместимую с вашим build-tools
+      #
+      # - name: Decode Signing Key and Import
+      #   # Этот шаг предполагает, что вы храните ваш keystore в виде base64 строки
+      #   # в GitHub Secrets под именем ANDROID_KEYSTORE.
+      #   # Вам также понадобятся пароли для keystore и ключа.
       #   run: |
-      #     echo "Signing APK..."
-      #     # Пример команды для подписи. Реальная команда зависит от ваших настроек
-      #     # и может включать использование jarsigner или apksigner.
-      #     # Вам нужно будет настроить keystore и пароли в GitHub Secrets.
-      #     # Например:
-      #     # keytool -genkey -v -keystore my-upload-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload # если нет ключа
-      #     # jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore my-upload-key.jks app-release-unsigned.apk alias_name
-      #     # apksigner sign --ks my-upload-key.jks --out app-release-signed.apk app-release-unsigned.apk
-      #     echo "APK signed successfully (example)."
+      #     echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > ./app/release.jks
+      #     echo "${{ secrets.ANDROID_KEY_ALIAS }}" > ./app/key_alias.txt
+      #     echo "${{ secrets.ANDROID_KEY_STORE_PASSWORD }}" > ./app/key_store_password.txt
+      #     echo "${{ secrets.ANDROID_KEY_PASSWORD }}" > ./app/key_password.txt
+      #   shell: bash
+      #
+      # - name: Sign APK
+      #   if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' # Пример условия: подписываем только для main/develop
+      #   run: |
+      #     flutter build apk --release --signing-keys-base64 "${{ secrets.ANDROID_KEYSTORE }}" \
+      #       --key-store-password "${{ secrets.ANDROID_KEY_STORE_PASSWORD }}" \
+      #       --key-alias "${{ secrets.ANDROID_KEY_ALIAS }}" \
+      #       --key-password "${{ secrets.ANDROID_KEY_PASSWORD }}" \
+      #       --target=lib/main.dart
       #
       # - name: Upload Signed APK artifact
       #   uses: actions/upload-artifact@v4
       #   with:
       #     name: app-release-signed.apk
-      #     path: build/app/outputs/flutter-apk/app-release-signed.apk # Путь к подписанному APK
+      #     path: build/app/outputs/flutter-apk/app-release.apk # Путь к подписанному APK (может отличаться)
+      
