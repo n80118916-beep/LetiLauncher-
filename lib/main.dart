@@ -1,39 +1,28 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Для SystemChrome
-import 'package:google_fonts/google_fonts.dart'; // Импортируем Google Fonts
-import 'package:provider/provider.dart'; // Если используете Provider
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart'; // Импортируем Provider
 
-// Импорт ваших экранов
 import 'screens/home_screen.dart';
-// import 'screens/version_manager_screen.dart'; // Будем импортировать позже
+// import 'screens/version_manager_screen.dart'; // Уже импортирован в HomeScreen
+// import 'screens/mod_browser_screen.dart'; // Уже импортирован в HomeScreen
 
-// Импорт сервисов, если они нужны здесь
-// import 'services/settings_service.dart';
+import 'services/minecraft_service.dart'; // Импортируем наш сервис
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized(); // Убедиться, что Flutter инициализирован
+  WidgetsFlutterBinding.ensureInitialized();
 
-  // Настройка ориентации экрана (если нужно)
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  // Можно также настроить системные UI (например, убрать полоску уведомлений)
-  // SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-
   runApp(
-    // Если используете Provider для управления состоянием
-    // MultiProvider(
-    //   providers: [
-    //     // Provider<SettingsService>(create: (_) => SettingsService()),
-    //     // Другие провайдеры...
-    //   ],
-    //   child: LetiLauncherApp(),
-    // )
-
-    // Если не используете Provider пока
-    LetiLauncherApp(),
+    // Оборачиваем MaterialApp в ChangeNotifierProvider
+    ChangeNotifierProvider(
+      create: (context) => MinecraftService(), // Создаем экземпляр нашего сервиса
+      child: LetiLauncherApp(),
+    ),
   );
 }
 
@@ -43,42 +32,35 @@ class LetiLauncherApp extends StatelessWidget {
     return MaterialApp(
       title: 'LetiLauncher',
       theme: ThemeData(
-        // Основная тема приложения
-        primarySwatch: Colors.blueGrey, // Можно выбрать другой цвет
-        primaryColor: Color(0xFF455A64), // Темно-сине-серый
+        primarySwatch: Colors.blueGrey,
+        primaryColor: Color(0xFF455A64),
         colorScheme: ColorScheme.fromSwatch(
           primarySwatch: Colors.blueGrey,
-          brightness: Brightness.dark, // Применяем темную тему
+          brightness: Brightness.dark,
         ).copyWith(
           secondary: Color(0xFF00BCD4), // Бирюзовый акцент
-          surface: Color(0xFF37474F), // Цвет поверхности (например, для карточек)
-          background: Color(0xFF263238), // Цвет фона
+          surface: Color(0xFF37474F),
+          background: Color(0xFF263238),
         ),
-
-        // Настройка шрифтов
-        textTheme: GoogleFonts.russoOneTextTheme( // Используем шрифт из Google Fonts
+        textTheme: GoogleFonts.russoOneTextTheme(
           Theme.of(context).textTheme,
         ).apply(
-          bodyColor: Colors.white70, // Цвет текста на темном фоне
+          bodyColor: Colors.white70,
           displayColor: Colors.white,
         ),
-
-        // Стиль AppBar
         appBarTheme: AppBarTheme(
-          backgroundColor: Color(0xFF37474F), // Цвет AppBar
-          foregroundColor: Colors.white, // Цвет иконок и заголовка AppBar
-          elevation: 4.0, // Тень под AppBar
-          titleTextStyle: GoogleFonts.russoOne( // Шрифт для заголовка AppBar
+          backgroundColor: Color(0xFF37474F),
+          foregroundColor: Colors.white,
+          elevation: 4.0,
+          titleTextStyle: GoogleFonts.russoOne(
             fontSize: 24.0,
             fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
         ),
-
-        // Стиль кнопок
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: Color(0xFF00BCD4), // Цвет кнопок
+            backgroundColor: Color(0xFF00BCD4),
             foregroundColor: Colors.white,
             padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             shape: RoundedRectangleBorder(
@@ -87,22 +69,26 @@ class LetiLauncherApp extends StatelessWidget {
             textStyle: GoogleFonts.russoOne(fontSize: 16, fontWeight: FontWeight.bold),
           ),
         ),
-
-        // Стиль TextFormField (для ввода никнейма, поиска)
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: Color(0xFF374747), // Темный фон для полей ввода
+          fillColor: Color(0xFF374747),
           hintStyle: GoogleFonts.russoOne(color: Colors.white54),
           labelStyle: GoogleFonts.russoOne(color: Colors.white),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8.0),
-            borderSide: BorderSide.none, // Убираем рамку, т.к. есть фон
+            borderSide: BorderSide.none,
           ),
           contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
+        // Тема для BottomNavigationBar
+        bottomNavigationBarTheme: BottomNavigationBarThemeData(
+          backgroundColor: Color(0xFF37474F), // Цвет фона навигации
+          selectedItemColor: Colors.cyanAccent, // Цвет активной иконки/текста
+          unselectedItemColor: Colors.white54, // Цвет неактивной иконки/текста
+        ),
       ),
-      debugShowCheckedModeBanner: false, // Убираем баннер "Debug"
-      home: HomeScreen(), // Главный экран приложения
+      debugShowCheckedModeBanner: false,
+      home: HomeScreen(),
     );
   }
 }
